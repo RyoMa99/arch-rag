@@ -29,7 +29,9 @@ graph TD
         Reranker --> ContextGrader[コンテキスト評価]
 
         ContextGrader -->|relevant| ParentDocRetriever[親ドキュメント取得]
-        ContextGrader -->|not_relevant| QueryRewriter
+        ContextGrader -->|not_relevant| RetryCheck1{リトライ上限?}
+        RetryCheck1 -->|未到達| QueryRewriter
+        RetryCheck1 -->|到達| Fallback((回答不可))
 
         ParentDocRetriever --> Generator[回答生成]
         WebSearchNode --> Generator
@@ -38,10 +40,14 @@ graph TD
         Generator --> HallucinationChecker[ハルシネーション検査]
 
         HallucinationChecker -->|pass| AnswerGrader[回答評価]
-        HallucinationChecker -->|fail| Generator
+        HallucinationChecker -->|fail| RetryCheck2{リトライ上限?}
+        RetryCheck2 -->|未到達| Generator
+        RetryCheck2 -->|到達| Fallback
 
         AnswerGrader -->|useful| OutputGuardrail[出力ガードレール]
-        AnswerGrader -->|not_useful| QueryRewriter
+        AnswerGrader -->|not_useful| RetryCheck3{リトライ上限?}
+        RetryCheck3 -->|未到達| QueryRewriter
+        RetryCheck3 -->|到達| Fallback
 
         OutputGuardrail --> END2((終了))
     end
@@ -140,6 +146,21 @@ graph TD
 - 関連性なしの場合の選択肢
   - クエリ書き換えて再検索
   - Web検索へフォールバック（CRAG: Corrective RAG）
+
+### リトライ制御
+
+パイプライン内の自己修正ループには無限ループ防止のためリトライ上限を設ける。
+
+| ループ箇所 | トリガー | 推奨上限 |
+|-----------|---------|---------|
+| コンテキスト評価 → クエリ書き換え | 関連ドキュメントなし | 3回 |
+| ハルシネーション検査 → 回答生成 | ハルシネーション検出 | 2回 |
+| 回答評価 → クエリ書き換え | 回答が不十分 | 3回 |
+
+**上限到達時の挙動（回答不可）:**
+- 「申し訳ありませんが、この質問にはお答えできません」等のフォールバックメッセージを返す
+- 失敗理由をログに記録（改善のためのデータ収集）
+- 必要に応じて人間へのエスカレーション導線を提供
 
 ### 回答
 
