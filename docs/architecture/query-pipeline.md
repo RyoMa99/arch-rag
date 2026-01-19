@@ -223,6 +223,63 @@ graph TD
 - フィードバックの活用方法
   - Golden Dataset: Bad評価をテストケースとして蓄積し、プロンプト改善やReranker選定に使用
   - Few-Shot Prompting: Good評価のQ&Aを別ストアにベクトル化して保存し、類似質問時にプロンプトへ動的注入（In-Context Learning）
+  - **2層フィードバックによるRerankingスコア調整**
+    - チャンク単位とドキュメント単位の両方でフィードバックスコアを管理
+    - チャンク更新後も`chunk_hash`による紐付けでスコアを継承
+    - ドキュメント単位スコアがフォールバックとして機能し、チャンク境界変更に強い
+
+### Rerankingでのフィードバックスコア活用
+
+フィードバックDBから取得したスコアをRerankingに反映する。
+
+**スコア合成の流れ:**
+
+```mermaid
+graph LR
+    A[検索結果] --> B[Rerankerスコア]
+    C[chunk_feedback] --> D{chunk_hash一致?}
+    E[document_feedback] --> D
+    D -->|Yes| F[チャンクスコア採用]
+    D -->|No| G[ドキュメントスコア×0.5]
+    F --> H[合成スコア計算]
+    G --> H
+    B --> H
+    H --> I[最終スコア]
+```
+
+**スコア計算ロジック:**
+
+```python
+def rerank_with_feedback(chunks, feedback_db):
+    for chunk in chunks:
+        # 1. チャンク単位のスコア取得
+        chunk_fb = feedback_db.get_chunk_feedback(chunk.hash)
+        chunk_score = chunk_fb.score if chunk_fb else 0
+
+        # 2. ドキュメント単位のスコア取得（フォールバック）
+        doc_fb = feedback_db.get_document_feedback(chunk.doc_id)
+        doc_score = doc_fb.aggregate_score if doc_fb else 0
+
+        # 3. 合成スコア（チャンク優先、なければドキュメント×0.5）
+        feedback_score = chunk_score if chunk_fb else doc_score * 0.5
+
+        # 4. Rerankスコアに反映（±10%の調整）
+        chunk.final_score = chunk.rerank_score * (1 + feedback_score * 0.1)
+
+    return sorted(chunks, key=lambda x: x.final_score, reverse=True)
+```
+
+**2層管理のメリット:**
+
+| 粒度 | メリット | ユースケース |
+|------|---------|-------------|
+| チャンク単位 | 精密な信頼度管理 | 特定の段落が不正確な場合にペナルティ |
+| ドキュメント単位 | チャンク境界変更に強い | 文書全体の信頼性評価、新規チャンクへの適用 |
+
+**注意点:**
+- フィードバックスコアは正規化（-1.0〜1.0）して保持
+- 調整係数（上記例では0.1）はドメインに応じてチューニング
+- フィードバック数が少ない段階では影響を抑える（信頼度の重み付け）
 - 評価
   - RAGAS
   - Langfuse
