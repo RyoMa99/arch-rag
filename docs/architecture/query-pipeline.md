@@ -76,6 +76,11 @@ graph TD
 - 検索モデル
   - BM25
 
+### 結果統合
+
+- RRF（Reciprocal Rank Fusion）: 複数の検索手法の結果を統合するアルゴリズム
+  - 異なるスコア尺度（ベクトル類似度、BM25スコア）を正規化して統合
+
 ### 検索結果の取りまとめ（Reranking）
 
 - Rerankingモデル
