@@ -16,6 +16,10 @@ graph TD
         Router -->|web_search| WebSearchNode[Web検索]
         Router -->|direct_answer| DirectLLM[直接回答]
 
+        WebSearchNode --> WebSearchCheck{検索結果あり?}
+        WebSearchCheck -->|yes| Generator
+        WebSearchCheck -->|no| Fallback
+
         QueryRewriter --> HybridRetriever[ハイブリッド検索]
 
         subgraph RetrievalLayer["検索レイヤー"]
@@ -34,7 +38,6 @@ graph TD
         RetryCheck1 -->|到達| Fallback((回答不可))
 
         ParentDocRetriever --> Generator[回答生成]
-        WebSearchNode --> Generator
         DirectLLM --> END1((終了))
 
         Generator --> HallucinationChecker[ハルシネーション検査]
@@ -79,6 +82,15 @@ graph TD
 - 構造化条件と定性的要望で検索手法を分ける
   - 構造化条件（「科目は英語」など）→ DB検索 / メタデータフィルタ
   - 定性的要望（「説明が丁寧」など）→ ベクトル検索
+
+### Web検索
+
+- 最新情報や社内ナレッジベースにない情報を取得する際に使用
+- 検索結果がある場合: Generator → HallucinationChecker → AnswerGrader の検証パイプラインを通る
+- 検索結果がない場合: 「回答不可」へフォールバック
+- 利用シーン
+  - ルーターが「最新ニュース」「外部情報」と判断した場合
+  - ベクトル検索で関連コンテキストが見つからなかった場合（CRAG）
 
 ### クエリ書き換え
 
