@@ -19,7 +19,7 @@ LangGraphで実装する運用向けRAGシステムのアーキテクチャ設�
 | カテゴリ | 推奨技術 |
 |---------|---------|
 | フレームワーク | LangGraph |
-| 埋め込みモデル | TBD |
+| 埋め込みモデル | ruri-v3-310m（日本語特化、JMTEBでSOTA） |
 | ベクトルDB | Qdrant / Weaviate |
 | 全文検索 | Elasticsearch (BM25) |
 | Reranker | TBD |
