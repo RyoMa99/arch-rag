@@ -5,8 +5,12 @@
 ```mermaid
 graph TD
     subgraph QueryPipeline["検索パイプライン"]
-        START((開始)) --> QueryAnalyzer[クエリ分析]
-        QueryAnalyzer --> Router{ルーター}
+        START((開始)) --> InputGuardrail[入力ガードレール]
+        InputGuardrail --> QueryAnalyzer[クエリ分析]
+        QueryAnalyzer --> SemanticCache{Semantic Cache}
+
+        SemanticCache -->|hit| END0((終了))
+        SemanticCache -->|miss| Router{ルーター}
 
         Router -->|vector_search| QueryRewriter[クエリ書き換え]
         Router -->|web_search| WebSearchNode[Web検索]
@@ -36,8 +40,10 @@ graph TD
         HallucinationChecker -->|pass| AnswerGrader[回答評価]
         HallucinationChecker -->|fail| Generator
 
-        AnswerGrader -->|useful| END2((終了))
+        AnswerGrader -->|useful| OutputGuardrail[出力ガードレール]
         AnswerGrader -->|not_useful| QueryRewriter
+
+        OutputGuardrail --> END2((終了))
     end
 ```
 
