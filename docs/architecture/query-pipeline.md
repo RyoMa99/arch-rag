@@ -54,6 +54,19 @@ graph TD
 
         OutputGuardrail --> END2((終了))
     end
+
+    subgraph ErrorHandling["エラーハンドリング"]
+        ErrorHandler{エラー種別}
+        ErrorHandler -->|timeout| TimeoutFallback[タイムアウト処理]
+        ErrorHandler -->|api_error| APIErrorFallback[API障害処理]
+        TimeoutFallback --> ErrorEnd((エラー終了))
+        APIErrorFallback --> ErrorEnd
+    end
+
+    VectorSearch -.->|error| ErrorHandler
+    Generator -.->|error| ErrorHandler
+    WebSearchNode -.->|error| ErrorHandler
+    Reranker -.->|error| ErrorHandler
 ```
 
 ## ノード詳細
@@ -173,6 +186,27 @@ graph TD
 - 「申し訳ありませんが、この質問にはお答えできません」等のフォールバックメッセージを返す
 - 失敗理由をログに記録（改善のためのデータ収集）
 - 必要に応じて人間へのエスカレーション導線を提供
+
+### エラーハンドリング
+
+外部サービス呼び出しで発生しうるエラーとその対処方針。
+
+| ノード | エラー種別 | タイムアウト | 対処 |
+|--------|-----------|-------------|------|
+| ベクトル検索 | DB接続エラー | 5秒 | BM25のみで継続 or エラー終了 |
+| 全文検索 | Elasticsearch障害 | 5秒 | ベクトル検索のみで継続 or エラー終了 |
+| Web検索 | API障害 | 10秒 | 「回答不可」へフォールバック |
+| 回答生成 | LLM APIタイムアウト | 30秒 | リトライ（最大2回）後エラー終了 |
+| Reranker | モデル障害 | 10秒 | Rerankingスキップ（検索結果をそのまま使用） |
+
+**エラー発生時の共通方針:**
+- 全エラーをログに記録（エラー種別、発生ノード、タイムスタンプ、リクエストID）
+- ユーザーには技術的詳細を見せず、汎用的なエラーメッセージを表示
+- 重大なエラー（DB全断など）はアラート発報
+
+**サーキットブレーカー:**
+- 連続エラー閾値（例: 5回/分）を超えた場合、該当サービスへの呼び出しを一時停止
+- 一定時間後（例: 30秒）に自動復旧を試行
 
 ### 回答
 
