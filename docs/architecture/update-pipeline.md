@@ -9,17 +9,25 @@ graph TD
 
         UpdateStrategy -->|immediate| ImmediateUpdate[即時更新]
         UpdateStrategy -->|batch| BatchQueue[バッチキュー]
+        UpdateStrategy -->|full_rebuild| FullRebuild[全再構築]
 
         BatchQueue --> BatchProcessor[バッチ処理]
 
         ImmediateUpdate --> GhostDataChecker[ゴーストデータ検査]
         BatchProcessor --> GhostDataChecker
+        FullRebuild --> NewIndexBuild[新規インデックス作成]
 
         GhostDataChecker --> DeleteOldVectors[古いベクトル削除]
         DeleteOldVectors --> InsertNewVectors[新規ベクトル挿入]
 
         InsertNewVectors --> IndexValidation[インデックス検証]
-        IndexValidation --> HotColdMigration{ホット/コールド移行}
+        NewIndexBuild --> IndexValidation
+
+        IndexValidation -->|success| HotColdMigration{ホット/コールド移行}
+        IndexValidation -->|failure| Rollback[ロールバック]
+
+        Rollback --> RestorePrevious[前バージョン復元]
+        RestorePrevious --> ErrorEnd((エラー終了))
 
         HotColdMigration -->|promote| PromoteToHot[ホットへ昇格]
         HotColdMigration -->|demote| DemoteToCold[コールドへ降格]
@@ -71,6 +79,27 @@ graph TD
   - `chunk_hash`: チャンク内容のハッシュ値
 - 新規チャンクのみ埋め込み処理を実行
 - 削除は論理削除（`is_active=false`）で安全に対応
+
+#### 全再構築（full_rebuild）
+
+増分更新では解消できない問題が蓄積した場合に実行する。
+
+**実行タイミング:**
+- 定期メンテナンス（例: 週次/月次）
+- インデックス断片化が閾値を超えた場合
+- 埋め込みモデルの変更時
+- 大規模なスキーマ変更時
+
+**処理フロー:**
+1. 新規インデックスを別名で作成
+2. 全ドキュメントを再チャンク・再埋め込み
+3. インデックス検証（整合性チェック）
+4. エイリアス切り替えでアトミックに本番反映
+5. 旧インデックスを一定期間保持後削除
+
+**注意点:**
+- 処理中も旧インデックスで検索を継続（ダウンタイムなし）
+- コストが高いため、頻繁な実行は避ける
 
 ### 新規ベクトル挿入
 
